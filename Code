@@ -1,0 +1,118 @@
+#include <Wire.h>
+#include <RTClib.h>
+#include <Servo.h>
+#include <DHT.h>
+#include <LiquidCrystal_I2C.h> // Library for I2C LCD
+
+// Initialize RTC
+RTC_DS3231 rtc;
+
+// Initialize LCD (16x2) with I2C address 0x27
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Define Servo
+Servo vertical; 
+int servovert = 45; 
+int servovertLimitHigh = 100;
+int servovertLimitLow = 1;
+
+// LDR sensor pins
+int ldrlt = A0; // Bottom Left LDR
+int ldrrt = A3; // Bottom Right LDR
+int ldrld = A1; // Top Left LDR
+int ldrrd = A2; // Bottom Right LDR
+
+// DHT22 Sensor
+#define DHTPIN 5       // Connect DHT22 data pin to Arduino Mega pin 5
+#define DHTTYPE DHT22  // Define sensor type
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(9600); // Initialize Serial Monitor
+  
+  // Initialize RTC
+  if (!rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    while (1);
+  }
+  
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, setting the time...");
+    rtc.adjust(DateTime(F(_DATE), F(TIME_))); // Set to compile time
+  }
+
+  // Initialize LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("System Starting..");
+
+  vertical.attach(13);
+  vertical.write(45);
+  dht.begin();  // Initialize DHT22 sensor
+  delay(2500);
+}
+
+void loop() {
+  // Read current date and time from RTC
+  DateTime now = rtc.now();
+
+  // Read DHT22 temperature
+  float temperature = dht.readTemperature(); // Read temperature in Celsius
+
+  // Read LDR values
+  int lt = analogRead(ldrlt); // Top left
+  int rt = analogRead(ldrrt); // Top right
+  int ld = analogRead(ldrld); // Bottom left
+  int rd = analogRead(ldrrd); // Bottom right
+
+  int tol = 90; // Tolerance for movement
+  int avt = (lt + rt) / 2; // Average of top sensors
+  int avd = (ld + rd) / 2; // Average of bottom sensors
+  int dvert = avt - avd;   // Difference between top and bottom
+
+  // Adjust servo position based on LDR sensor
+  if (abs(dvert) > tol) { 
+    if (avt > avd) {
+      servovert++;
+      if (servovert > servovertLimitHigh) servovert = servovertLimitHigh;
+    } else {
+      servovert--;
+      if (servovert < servovertLimitLow) servovert = servovertLimitLow;
+    }
+    vertical.write(servovert);
+  }
+
+  // Print data to Serial Monitor
+  Serial.print("Date: ");
+  Serial.print(now.day(), DEC);
+  Serial.print('/');
+  Serial.print(now.month(), DEC);
+  Serial.print('/');
+  Serial.print(now.year(), DEC);
+  Serial.print(" Time: ");
+  Serial.print(now.hour(), DEC);
+  Serial.print(':');
+  Serial.print(now.minute(), DEC);
+  Serial.print(':');
+  Serial.print(now.second(), DEC);
+  
+  Serial.print(" | Temperature: ");
+  Serial.print(temperature, 2);
+  Serial.println(" °C");
+
+  // Display Temperature and Time on LCD
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Temp: ");
+  lcd.print(temperature, 1);
+  lcd.print(" C");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Time: ");
+  lcd.print(now.hour());
+  lcd.print(":");
+  lcd.print(now.minute());
+
+  delay(1000); // Delay for stability
+}
